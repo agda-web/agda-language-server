@@ -16,7 +16,6 @@ import           Prelude                        hiding ( null )
 
 import           Agda.Compiler.Backend          ( parseBackendOptions )
 import           Agda.Compiler.Builtin          ( builtinBackends )
-import           Agda.Convert                   ( fromResponse )
 import           Agda.Interaction.Base          ( Command
                                                 , Command'(Command, Done, Error)
 #if MIN_VERSION_Agda(2,7,0)
@@ -24,7 +23,6 @@ import           Agda.Interaction.Base          ( Command
                                                 , CommandM
 #endif
                                                 , CommandState(optionsOnReload)
-                                                , IOTCM
                                                 , initCommandState
                                                 , parseIOTCM
                                                 )
@@ -61,7 +59,6 @@ import           Agda.TypeChecking.Monad.Base   ( TCM )
 import qualified Agda.TypeChecking.Monad.Benchmark
                                                as Bench
 import           Agda.TypeChecking.Monad.State  ( setInteractionOutputCallback )
-import           Agda.Utils.FileName            ( absolute )
 import           Agda.Utils.Impossible          ( CatchImpossible
                                                   ( catchImpossible
                                                   )
@@ -82,18 +79,16 @@ import           Data.Aeson                     ( FromJSON
                                                 , fromJSON
                                                 )
 import qualified Data.Aeson                    as JSON
-import           Data.Maybe                     ( listToMaybe )
 import           Data.Text                      ( pack )
 import           GHC.Generics                   ( Generic )
-import           Language.LSP.Server            ( getConfig )
 import           Monad
 import           Options                        ( Config(configRawAgdaOptions)
-                                                , Options(optRawAgdaOptions, optRawResponses)
+                                                , Options(optRawAgdaOptions)
                                                 , versionNumber
                                                 )
 
 import qualified Agda.IR                       as IR
-import           Agda.Interaction.JSON          ( encode, encodeTCM )
+import           Agda.Interaction.JSON          ( encodeTCM )
 import           Agda.Interaction.JSONTop       ()
 
 getAgdaVersion :: String
@@ -108,13 +103,8 @@ start = do
   result <- runAgda $ do
     -- decides how to output Response
     lift $ setInteractionOutputCallback $ \response -> do
-      resp <- if optRawResponses (envOptions env)
-        then do
-          value <- (pure . encodeTCM) response
-          resp' <- fmap IR.ResponseJSONRaw value
-          return resp'
-        else fromResponse response
-
+      value <- (pure . encodeTCM) response
+      resp <- fmap IR.ResponseJSONRaw value
       sendResponse env resp
 
     -- keep reading command

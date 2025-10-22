@@ -5,7 +5,6 @@ module Server.Handler where
 import           Agda                           ( getCommandLineOptions
                                                 , runAgda
                                                 )
-import qualified Agda.IR                       as IR
 
 import           Agda.Interaction.Base          ( CommandQueue(..)
 #if MIN_VERSION_Agda(2,7,0)
@@ -19,8 +18,6 @@ import           Agda.Interaction.Base          ( CommandQueue(..)
 import           Agda.Interaction.BasicOps      ( atTopLevel
                                                 , typeInCurrent
                                                 )
-import           Agda.Interaction.Highlighting.Precise
-                                                ( HighlightingInfo )
 import qualified Agda.Interaction.Imports      as Imp
 import           Agda.Interaction.InteractionTop
                                                 ( cmd_load'
@@ -49,9 +46,7 @@ import           Agda.Syntax.Parser             ( exprParser
                                                 )
 import           Agda.Syntax.Translation.ConcreteToAbstract
                                                 ( concreteToAbstract_ )
-import           Agda.TypeChecking.Monad        ( HasOptions(commandLineOptions)
-                                                , setInteractionOutputCallback
-                                                )
+import           Agda.TypeChecking.Monad        ( setInteractionOutputCallback )
 #if MIN_VERSION_Agda(2,8,0)
 import           Agda.Interaction.Command       ( CommandM, localStateCommandM )
 import           Agda.TypeChecking.Monad.Trace  ( runPM )
@@ -68,15 +63,12 @@ import           Data.Text                      ( Text
                                                 , pack
                                                 , unpack
                                                 )
-import qualified Data.Text                     as Text
 import           Language.LSP.Server            ( LspM )
 import qualified Language.LSP.Server           as LSP
 import qualified Language.LSP.Protocol.Types   as LSP
 import qualified Language.LSP.VFS              as VFS
 import           Monad
-import           Options                        ( Config
-                                                , Options(optRawAgdaOptions)
-                                                )
+import           Options                        ( Config )
 
 initialiseCommandQueue :: IO CommandQueue
 initialiseCommandQueue = CommandQueue <$> newTChanIO <*> newTVarIO Nothing
@@ -142,35 +134,3 @@ onHover uri pos = do
   where
       hoverContent =
         LSP.InL . LSP.mkMarkdownCodeBlock "agda-language-server"
---------------------------------------------------------------------------------
--- Helper functions for converting stuff to SemanticTokenAbsolute
-
-
-fromHighlightingInfo :: IR.HighlightingInfo -> LSP.SemanticTokenAbsolute
-fromHighlightingInfo (IR.HighlightingInfo start end aspects isTokenBased note defSrc)
-  = LSP.SemanticTokenAbsolute 1 1 3 kw []
-  where
-    kw = LSP.SemanticTokenTypes_Keyword
-
--- HighlightingInfo
---       Int -- starting offset
---       Int -- ending offset
---       [String] -- list of names of aspects
---       Bool -- is token based?
---       String -- note
---       (Maybe (FilePath, Int)) -- the defining module of the token and its position in that module
-
--- toToken
---   :: Ranged a
---   => J.SemanticTokenTypes
---   -> [J.SemanticTokenModifiers]
---   -> a
---   -> [J.SemanticTokenAbsolute]
--- toToken types modifiers x =
---   let range = rangeOf x
---   in  [ J.SemanticTokenAbsolute (posLine (rangeStart range) - 1)
---                                 (posCol (rangeStart range) - 1)
---                                 (rangeSpan range)
---                                 types
---                                 modifiers
---       ]

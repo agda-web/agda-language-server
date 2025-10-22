@@ -6,27 +6,21 @@
 module Server (run) where
 
 import qualified Agda
-import Control.Concurrent (writeChan)
 import Control.Monad (void)
 import Control.Monad.Reader (MonadIO (liftIO))
-import Data.Aeson
-  ( FromJSON,
-    ToJSON,
-  )
 import qualified Data.Aeson as JSON
 import Data.Text (pack)
 import GHC.IO.IOMode (IOMode (ReadWriteMode))
 import Language.LSP.Protocol.Message
 import Language.LSP.Protocol.Types (HoverParams (..), SaveOptions (..), TextDocumentIdentifier (..), TextDocumentSyncKind (..), TextDocumentSyncOptions (..), type (|?) (..))
 import Language.LSP.Server hiding (Options)
-import qualified Language.LSP.Server hiding (Options)
 import qualified Language.LSP.Server as LSP
 import Monad
 import qualified Network.Simple.TCP as TCP
 import Network.Socket (socketToHandle)
 import Options
 import qualified Server.Handler as Handler
-import Switchboard (Switchboard, agdaCustomMethod)
+import Switchboard (agdaCustomMethod)
 import qualified Switchboard
 
 #if defined(wasm32_HOST_ARCH)

@@ -8,19 +8,11 @@ import Agda.Interaction.Base (IOTCM)
 import Agda.TypeChecking.Monad (TCMT)
 import Control.Concurrent
 import Control.Monad.Reader
-import Data.IORef
-  ( IORef,
-    modifyIORef',
-    newIORef,
-    readIORef,
-    writeIORef,
-  )
 import Data.Maybe (isJust)
 import Data.Text
   ( Text,
     pack,
   )
-import qualified Language.LSP.Protocol.Types as LSP
 import Language.LSP.Server
   ( MonadLsp,
     getConfig,
