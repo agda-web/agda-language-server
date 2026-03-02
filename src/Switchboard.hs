@@ -34,10 +34,11 @@ data Switchboard = Switchboard
 new :: Env -> IO Switchboard
 new env = do
   ctxEnvIORef <- newIORef Nothing
+  sta <- initSta
   Switchboard
     <$> forkIO (keepPrintingLog env)
     <*> forkIO (keepSendindResponse env ctxEnvIORef)
-    <*> forkIO (runReaderT Agda.start env)
+    <*> forkIO (void $ runServerM env sta Agda.start)
     <*> pure ctxEnvIORef
 
 -- | For sending reactions to the client

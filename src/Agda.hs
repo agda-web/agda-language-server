@@ -14,7 +14,7 @@ module Agda
 
 import           Prelude                        hiding ( null )
 
-import           Agda.Compiler.Backend          ( parseBackendOptions )
+import           Agda.Compiler.Backend          ( parseBackendOptions, MonadTCM (liftTCM), MonadFileId (fileFromId) )
 import           Agda.Compiler.Builtin          ( builtinBackends )
 import           Agda.Convert                   ( fromResponse )
 import           Agda.Interaction.Base          ( Command
@@ -27,10 +27,12 @@ import           Agda.Interaction.Base          ( Command
                                                 , IOTCM
                                                 , initCommandState
                                                 , parseIOTCM
+                                                , CurrentFile (currentFilePath)
+                                                , theCurrentFile
                                                 )
 
 #if MIN_VERSION_Agda(2,8,0)
-import           Agda.Interaction.Command       ( CommandM )
+import           Agda.Interaction.Command       ( CommandM, localStateCommandM )
 #endif
 import           Agda.Syntax.Common.Pretty      ( render, vcat )
 import           Agda.Interaction.InteractionTop
@@ -55,13 +57,13 @@ import           Agda.TypeChecking.Errors       ( getAllWarningsOfTCErr
 import           Agda.TypeChecking.Monad        ( HasOptions
                                                 , TCErr
                                                 , commandLineOptions
-                                                , runTCMTop'
+                                                , runTCMTop', asksTC, TCEnv (..), getCurrentPath
                                                 )
 import           Agda.TypeChecking.Monad.Base   ( TCM )
 import qualified Agda.TypeChecking.Monad.Benchmark
                                                as Bench
 import           Agda.TypeChecking.Monad.State  ( setInteractionOutputCallback )
-import           Agda.Utils.FileName            ( absolute )
+import           Agda.Utils.FileName            ( absolute, AbsolutePath (AbsolutePath), filePath )
 import           Agda.Utils.Impossible          ( CatchImpossible
                                                   ( catchImpossible
                                                   )
@@ -107,7 +109,7 @@ start = do
 
   result <- runAgda $ do
     -- decides how to output Response
-    lift $ setInteractionOutputCallback $ \response -> do
+    liftServer $ setInteractionOutputCallback $ \response -> do
       resp <- if optRawResponses (envOptions env)
         then do
           value <- (pure . encodeTCM) response
@@ -128,7 +130,12 @@ start = do
           { optionsOnReload = options { optAbsoluteIncludePaths = [] }
           }
 
-    _ <- mapReaderT (`runStateT` commandState) (loop env)
+    _ <- mapStateT (\st -> do
+      s' <- mapReaderT (\t -> do
+          (s', cs) <- runStateT t commandState
+          return s'
+        ) st
+      return s') (loop env)
 
     return ()
   -- TODO: we should examine the result
@@ -138,9 +145,22 @@ start = do
  where
   loop :: Env -> ServerM CommandM ()
   loop env = do
+    writeLog "STARTS WITH CF"
+    sta <- get
+    writeLog' $ currentFilePath <$> staCurrentlyLoadedFile sta
+    writeLog "================="
+
+
     Bench.reset
     done <- Bench.billTo [] $ do
-      r <- lift $ maybeAbort runInteraction
+      r <- liftServer $ maybeAbort runInteraction
+      cf <- liftServer $ gets theCurrentFile
+      _ <- put (sta { staCurrentlyLoadedFile = cf })
+      writeLog "TO UPDATE CF TO"
+      sta' <- gets staCurrentlyLoadedFile
+      writeLog' $ currentFilePath <$> sta'
+      writeLog "================"
+
       case r of
         Done    -> return True -- Done.
         Error s -> do
@@ -218,10 +238,11 @@ getCommandLineOptions = do
 runAgda :: MonadIO m => ServerM TCM a -> ServerM m (Either String a)
 runAgda p = do
   env <- ask
-  let p' = runServerM env p
+  sta <- get
+  let p' = runServerM env sta p
   liftIO
     $       runTCMTop'
-              (                 (Right <$> p')
+              (                 (Right <$> fst <$> p')
               `catchError`      handleTCErr
               `catchImpossible` handleImpossible
               )

@@ -8,7 +8,7 @@ module Server (run) where
 import qualified Agda
 import Control.Concurrent (writeChan)
 import Control.Monad (void)
-import Control.Monad.Reader (MonadIO (liftIO))
+import Control.Monad.Reader (MonadIO (liftIO), MonadReader (ask))
 import Data.Aeson
   ( FromJSON,
     ToJSON,
@@ -28,6 +28,7 @@ import Options
 import qualified Server.Handler as Handler
 import Switchboard (Switchboard, agdaCustomMethod)
 import qualified Switchboard
+import Control.Monad.State (lift)
 
 #if defined(wasm32_HOST_ARCH)
 import Agda.Utils.IO (catchIO)
@@ -66,15 +67,16 @@ run options = do
             JSON.Error s -> Left $ pack $ "Cannot parse server configuration: " <> s
             JSON.Success new -> Right new,
           doInitialize = \ctxEnv _req -> do
-            env <- runLspT ctxEnv (createInitEnv options)
+            (env, sta_) <- runLspT ctxEnv $ fmap (\s -> (s, initSta)) (createInitEnv options)
+            sta <- sta_
             switchboard <- Switchboard.new env
             Switchboard.setupLanguageContextEnv switchboard ctxEnv
-            pure $ Right (ctxEnv, env),
+            pure $ Right (ctxEnv, (env, sta)),
           configSection = "dummy",
           staticHandlers = const handlers,
-          interpretHandler = \(ctxEnv, env) ->
+          interpretHandler = \(ctxEnv, (env, sta)) ->
             Iso
-              { forward = runLspT ctxEnv . runServerM env,
+              { forward = \s -> runLspT ctxEnv (fmap (\(out, _) -> out) $ runServerM env sta s),
                 backward = liftIO
               },
           options = lspOptions

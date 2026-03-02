@@ -14,7 +14,7 @@ import           Agda.Interaction.Base          ( CommandQueue(..)
 #endif
                                                 , CommandState(optionsOnReload)
                                                 , Rewrite(AsIs)
-                                                , initCommandState
+                                                , initCommandState, theCurrentFile, currentFilePath
                                                 )
 import           Agda.Interaction.BasicOps      ( atTopLevel
                                                 , typeInCurrent
@@ -77,6 +77,8 @@ import           Monad
 import           Options                        ( Config
                                                 , Options(optRawAgdaOptions)
                                                 )
+import Agda.Utils.Maybe (isJust)
+import Agda.Utils.FileName (filePath)
 
 initialiseCommandQueue :: IO CommandQueue
 initialiseCommandQueue = CommandQueue <$> newTChanIO <*> newTVarIO Nothing
@@ -89,7 +91,7 @@ runCommandM program = do
     options <- getCommandLineOptions
 
     -- we need to set InteractionOutputCallback else it would panic
-    lift $ setInteractionOutputCallback $ \_response -> return ()
+    liftServer $ setInteractionOutputCallback $ \_response -> return ()
 
     -- setup the command state
     commandQueue <- liftIO initialiseCommandQueue
@@ -97,13 +99,13 @@ runCommandM program = do
           { optionsOnReload = options { optAbsoluteIncludePaths = [] }
           }
 
-    lift $ evalStateT program commandState
+    liftServer $ evalStateT program commandState
 
 inferTypeOfText
   :: FilePath -> Text -> ServerM (LspM Config) (Either String String)
 inferTypeOfText filepath text = runCommandM $ do
-    -- load first
-  cmd_load' filepath [] True Imp.TypeCheck $ \_ -> return ()
+  -- load first
+  -- cmd_load' filepath [] True Imp.TypeCheck $ \_ -> return ()
   -- infer later
   let norm = AsIs
   -- localStateCommandM: restore TC state afterwards, do we need this here?
@@ -116,29 +118,44 @@ inferTypeOfText filepath text = runCommandM $ do
 
 onHover :: LSP.Uri -> LSP.Position -> ServerM (LspM Config) (LSP.Hover LSP.|? LSP.Null)
 onHover uri pos = do
-  result <- LSP.getVirtualFile (LSP.toNormalizedUri uri)
-  case result of
-    Nothing   -> return $ LSP.InR LSP.Null
-    Just file -> do
-      let source      = VFS.virtualFileText file
-      let offsetTable = makeToOffset source
-      let agdaPos     = toAgdaPositionWithoutFile offsetTable pos
-      lookupResult <- Parser.tokenAt uri source agdaPos
-      case lookupResult of
-        Nothing             -> return $ LSP.InR LSP.Null
-        Just (_token, text) -> do
-          case LSP.uriToFilePath uri of
-            Nothing       -> return $ LSP.InR LSP.Null
-            Just filepath -> do
-              let range = LSP.Range pos pos
-              inferResult <- inferTypeOfText filepath text
-              case inferResult of
-                Left err -> do
-                  let content = hoverContent $ "Error: " <> pack err
-                  return $ LSP.InL $ LSP.Hover content (Just range)
-                Right typeString -> do
-                  let content = hoverContent $ pack typeString
-                  return $ LSP.InL $ LSP.Hover content (Just range)
+  cf <- gets staCurrentlyLoadedFile
+  let fp = LSP.uriToFilePath uri
+
+  writeLog "CF ---"
+  writeLog' $ currentFilePath <$> cf
+  writeLog "FP ---"
+  writeLog' fp
+
+  let isHoveringCurrentFile = case (cf, fp) of
+        (Just cf, Just fp) -> (filePath . currentFilePath) cf == fp
+        _ -> False
+
+  case isHoveringCurrentFile of
+    False -> return $ LSP.InR LSP.Null
+    True -> do
+      result <- lift $ LSP.getVirtualFile (LSP.toNormalizedUri uri)
+      case result of
+        Nothing   -> return $ LSP.InR LSP.Null
+        Just file -> do
+          let source      = VFS.virtualFileText file
+          let offsetTable = makeToOffset source
+          let agdaPos     = toAgdaPositionWithoutFile offsetTable pos
+          lookupResult <- Parser.tokenAt uri source agdaPos
+          case lookupResult of
+            Nothing             -> return $ LSP.InR LSP.Null
+            Just (_token, text) -> do
+              case fp of
+                Nothing       -> return $ LSP.InR LSP.Null
+                Just filepath -> do
+                  let range = LSP.Range pos pos
+                  inferResult <- inferTypeOfText filepath text
+                  case inferResult of
+                    Left err -> do
+                      let content = hoverContent $ "Error: " <> pack err
+                      return $ LSP.InL $ LSP.Hover content (Just range)
+                    Right typeString -> do
+                      let content = hoverContent $ pack typeString
+                      return $ LSP.InL $ LSP.Hover content (Just range)
   where
       hoverContent =
         LSP.InL . LSP.mkMarkdownCodeBlock "agda-language-server"
