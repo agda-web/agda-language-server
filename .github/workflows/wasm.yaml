@@ -26,7 +26,7 @@ jobs:
       fail-fast: false
 
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
       with:
         path: als
         submodules: recursive
@@ -42,14 +42,14 @@ jobs:
 
     - name: Try to restore cached .ghc-wasm
       id: ghc-wasm-cache-restore
-      uses: actions/cache/restore@v4
+      uses: actions/cache/restore@v5
       with:
         path: ~/.ghc-wasm
         key: ghc-wasm-${{ env.CI_CACHE_KEY }}
 
     - name: Try to restore cached native cabal
       id: native-cabal-cache-restore
-      uses: actions/cache/restore@v4
+      uses: actions/cache/restore@v5
       with:
         path: |
           ~/.config/cabal
@@ -58,7 +58,7 @@ jobs:
 
     - name: Try to restore cached dist-newstyle
       id: dist-newstyle-cache-restore
-      uses: actions/cache/restore@v4
+      uses: actions/cache/restore@v5
       with:
         path: als/dist-newstyle
         key: dist-newstyle-${{ env.CI_CACHE_KEY }}-${{ hashFiles('als/dist-newstyle/**') }}
@@ -106,7 +106,7 @@ jobs:
       run: wasm32-wasi-cabal build lib:agda
 
     - name: Cache dist-newstyle
-      uses: actions/cache/save@v4
+      uses: actions/cache/save@v5
       if: steps.build-dep-agda.outcome == 'success'
       with:
         path: als/dist-newstyle
@@ -136,7 +136,7 @@ jobs:
       run: rm -rf ~/.cache/cabal/logs ~/.ghc-wasm/.cabal/logs
 
     - name: Cache native cabal
-      uses: actions/cache/save@v4
+      uses: actions/cache/save@v5
       if: steps.ghc-wasm-setup.outcome == 'success'
       with:
         path: |
@@ -145,14 +145,14 @@ jobs:
         key: ${{ steps.native-cabal-cache-restore.outputs.cache-primary-key }}
 
     - name: Cache ghc-wasm-meta
-      uses: actions/cache/save@v4
+      uses: actions/cache/save@v5
       if: steps.ghc-wasm-setup.outcome == 'success'
       with:
         path: ~/.ghc-wasm
         key: ${{ steps.ghc-wasm-cache-restore.outputs.cache-primary-key }}
 
     - name: Upload artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: als-wasm-${{ matrix.agda.name }}
         path: ~/out
