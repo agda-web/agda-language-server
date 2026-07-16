@@ -12,6 +12,19 @@ import System.FilePath ((</>))
 import System.IO
 import Text.Read (readMaybe)
 
+#if defined(REACTOR)
+import GHC.Wasm.Prim
+import Server (runFromReactor)
+import qualified Data.ByteString as B
+import qualified Data.ByteString.Lazy as BL
+import qualified Data.Text as T
+import qualified Data.Text.Lazy as TL
+import Data.Text.Encoding (encodeUtf8)
+import Data.Text.Lazy.Encoding (decodeUtf8)
+import Control.Concurrent (MVar, newEmptyMVar, takeMVar, putMVar)
+import Foreign.StablePtr (StablePtr, newStablePtr, freeStablePtr, deRefStablePtr)
+#endif
+
 #if MIN_VERSION_Agda(2,8,0)
 import Agda.Setup (setup)
 #endif
@@ -50,3 +63,84 @@ main = do
           _ <- run options
           -- _ <- run
           return ()
+
+
+#if defined(REACTOR)
+
+data Env = Env
+  { options :: Options
+  , incomingMessage :: MVar B.StrictByteString
+  , outgoingMessage :: MVar String
+  }
+
+initialEnv :: IO Env
+initialEnv = Env <$> getOptionsFromArgv <*> newEmptyMVar <*> newEmptyMVar
+
+type ServerHandle = StablePtr Env
+
+foreign export javascript "run_setup"
+  runSetup :: IO ()
+
+foreign export javascript "new_language_server"
+  newLanguageServer :: IO ServerHandle
+
+foreign export javascript "run_language_server"
+  runLanguageServer :: ServerHandle -> IO Int
+
+foreign export javascript "free_language_server"
+  freeLanguageServer :: ServerHandle -> IO ()
+
+foreign export javascript "send_message"
+  sendMessage :: ServerHandle -> JSString -> IO ()
+
+foreign export javascript "recv_message"
+  recvMessage :: ServerHandle -> IO JSString
+
+runSetup :: IO ()
+runSetup = setup True
+
+newLanguageServer :: IO ServerHandle
+newLanguageServer = initialEnv >>= newStablePtr
+
+freeLanguageServer :: ServerHandle -> IO ()
+freeLanguageServer = freeStablePtr
+
+runLanguageServer :: ServerHandle -> IO Int
+runLanguageServer hdl = do
+  env <- deRefStablePtr hdl
+
+  let
+    serverInwards :: IO B.StrictByteString
+    serverInwards = takeMVar (incomingMessage env)
+
+    serverOutwards :: BL.LazyByteString -> IO ()
+    serverOutwards s = (return . TL.unpack . decodeUtf8) s >>= putMVar (outgoingMessage env)
+
+  runFromReactor serverInwards serverOutwards (options env)
+
+
+sendMessage :: ServerHandle -> JSString -> IO ()
+sendMessage hdl s = do
+  env <- deRefStablePtr hdl
+  let input = fromJSString s
+  putMVar (incomingMessage env) $ (encodeUtf8 . T.pack) input
+  -- put an EOF to signal message end
+  putMVar (incomingMessage env) $ ""
+  return ()
+
+recvMessage :: ServerHandle -> IO JSString
+recvMessage hdl = do
+  env <- deRefStablePtr hdl
+  str <- takeMVar (outgoingMessage env)
+  return $ toJSString str
+
+#else
+
+data JSString = JSString {}
+
+fromJSString :: JSString -> String
+fromJSString = undefined
+toJSString :: String -> JSString
+toJSString = undefined
+
+#endif
