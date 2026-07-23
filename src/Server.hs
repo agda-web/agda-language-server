@@ -43,7 +43,7 @@ import Network.Socket (socketToHandle)
 
 #if defined(REACTOR)
 import qualified Data.Text as T
-import Data.ByteString (StrictByteString)
+import qualified Data.ByteString as B
 import Data.ByteString.Lazy (LazyByteString)
 import qualified Data.Attoparsec.ByteString as Attoparsec
 #endif
@@ -75,7 +75,7 @@ run options = do
       runServer (serverDefn options)
 
 #if defined(REACTOR)
-runFromReactor :: IO StrictByteString -> (LazyByteString -> IO ()) -> Options -> IO Int
+runFromReactor :: IO B.StrictByteString -> (LazyByteString -> IO ()) -> Options -> IO Int
 runFromReactor serverInwards serverOutwards options = do
   runServerWithConfig serverConfig (serverDefn options)
   where
@@ -86,7 +86,13 @@ runFromReactor serverInwards serverOutwards options = do
       , inwards = serverInwards
       , outwards = serverOutwards
       , prepareOutwards = id
-      , parseInwards = Attoparsec.takeByteString
+      , parseInwards = do
+          -- using takeByteString here will make it return partial result,
+          -- requiring another empty string to signal its end
+          chunk <- Attoparsec.getChunk
+          case chunk of
+            Nothing -> pure B.empty
+            Just xs -> Attoparsec.take $ B.length xs
       }
 #endif
 

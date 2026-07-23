@@ -124,8 +124,6 @@ sendMessage hdl s = do
   env <- deRefStablePtr hdl
   let input = fromJSString s
   putMVar (incomingMessage env) $ (encodeUtf8 . T.pack) input
-  -- put an EOF to signal message end
-  putMVar (incomingMessage env) $ ""
   return ()
 
 recvMessage :: ServerHandle -> IO JSString
