@@ -1,5 +1,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE DataKinds #-}
 
 -- entry point of the LSP server
 
@@ -13,7 +15,7 @@ module Server (
 import qualified Agda
 import Control.Concurrent (writeChan)
 import Control.Monad (void)
-import Control.Monad.Reader (MonadIO (liftIO))
+import Control.Monad.Reader (MonadIO (liftIO), ask)
 import Data.Aeson
   ( FromJSON,
     ToJSON,
@@ -110,7 +112,7 @@ serverDefn options =
         Switchboard.setupLanguageContextEnv switchboard ctxEnv
         pure $ Right (ctxEnv, env),
       configSection = "dummy",
-      staticHandlers = const handlers,
+      staticHandlers = const $ submitToReactor handlers,
       interpretHandler = \(ctxEnv, env) ->
         Iso
           { forward = runLspT ctxEnv . runServerM env,
@@ -121,6 +123,20 @@ serverDefn options =
 
 lspOptions :: LSP.Options
 lspOptions = defaultOptions {optTextDocumentSync = Just syncOptions}
+
+submitToReactor :: (m ~ ServerM (LspM Config)) => Handlers m -> Handlers m
+submitToReactor = mapHandlers goReq goNoti
+  where
+    goReq :: forall (a :: Method ClientToServer Request). Handler (ServerM (LspM Config)) a -> Handler (ServerM (LspM Config)) a
+    goReq f = \msg k -> do
+      ctxEnv <- getLspEnv
+      env <- ask
+      liftIO $ writeChan (envLspRequestChan env) (ReactorInput $ runLspT ctxEnv . runServerM env $ f msg k)
+    goNoti :: forall (a :: Method ClientToServer Notification). Handler (ServerM (LspM Config)) a -> Handler (ServerM (LspM Config)) a
+    goNoti f = \msg -> do
+      ctxEnv <- getLspEnv
+      env <- ask
+      liftIO $ writeChan (envLspRequestChan env) (ReactorInput $ runLspT ctxEnv . runServerM env $ f msg)
 
 -- these `TextDocumentSyncOptions` are essential for receiving notifications from the client
 -- syncOptions :: TextDocumentSyncOptions

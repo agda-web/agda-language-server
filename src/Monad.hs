@@ -33,6 +33,9 @@ import qualified Server.ResponseController as ResponseController
 
 --------------------------------------------------------------------------------
 
+newtype ReactorInput
+  = ReactorInput (IO ())
+
 data Env = Env
   { envOptions :: Options,
     envDevMode :: Bool,
@@ -40,7 +43,8 @@ data Env = Env
     envLogChan :: Chan Text,
     envCommandController :: CommandController,
     envResponseChan :: Chan Response,
-    envResponseController :: ResponseController
+    envResponseController :: ResponseController,
+    envLspRequestChan :: Chan ReactorInput
   }
 
 createInitEnv :: (MonadIO m, MonadLsp Config m) => Options -> m Env
@@ -51,6 +55,7 @@ createInitEnv options =
     <*> liftIO CommandController.new
     <*> liftIO newChan
     <*> liftIO ResponseController.new
+    <*> liftIO newChan
 
 --------------------------------------------------------------------------------
 
