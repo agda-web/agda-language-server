@@ -79,6 +79,8 @@ dependencies:
   - text
   - process
   - prettyprinter
+  - transformers
+  - text-rope == 0.3
 
 default-extensions:
 - LambdaCase

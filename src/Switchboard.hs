@@ -25,6 +25,7 @@ import System.IO (stderr)
 
 data Switchboard = Switchboard
   { sbPrintLog :: ThreadId,
+    sbRunLsp :: ThreadId,
     sbSendResponse :: ThreadId,
     sbRunAgda :: ThreadId,
     sbLanguageContextEnv :: IORef (Maybe (LanguageContextEnv Config))
@@ -36,6 +37,7 @@ new env = do
   ctxEnvIORef <- newIORef Nothing
   Switchboard
     <$> forkIO (keepPrintingLog env)
+    <*> forkIO (keepHandlingLspRequest env)
     <*> forkIO (keepSendindResponse env ctxEnvIORef)
     <*> forkIO (runReaderT Agda.start env)
     <*> pure ctxEnvIORef
@@ -57,8 +59,15 @@ destroy switchboard = do
 keepPrintingLog :: Env -> IO ()
 keepPrintingLog env = forever $ do
   result <- readChan (envLogChan env)
-  when (envDevMode env) $ do
+  when True $ do
     Text.hPutStrLn stderr result
+
+-- | Keep handling requests from LSP
+-- Consumer of `envLspRequestChan`
+keepHandlingLspRequest :: Env -> IO ()
+keepHandlingLspRequest env = forever $ do
+  ReactorInput action <- readChan (envLspRequestChan env)
+  action
 
 -- | Keep sending reactions
 -- Consumer of `envResponseChan`

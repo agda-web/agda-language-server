@@ -8,6 +8,7 @@ module Agda.Position
     makeFromOffset,
     fromOffset,
     toAgdaPositionWithoutFile,
+    toAgdaPositionWithoutFileLC,
     toAgdaRange,
     prettyPositionWithoutFile,
     -- , toLSPRange
@@ -24,6 +25,8 @@ import qualified Data.Strict.Maybe as Strict
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Language.LSP.Protocol.Types as LSP
+import qualified Data.Text.Mixed.Rope as Rope
+import qualified Data.Text.Lines as L
 
 -- Note:  LSP srclocs are 0-base
 --        Agda srclocs are 1-base
@@ -57,6 +60,13 @@ toAgdaPositionWithoutFile table (LSP.Position line col) =
     (fromIntegral (toOffset table (fromIntegral line, fromIntegral col)) + 1)
     (fromIntegral line + 1)
     (fromIntegral col + 1)
+
+toAgdaPositionWithoutFileLC :: Rope.Rope -> LSP.UInt -> LSP.UInt -> PositionWithoutFile
+toAgdaPositionWithoutFileLC rope line col =
+  Pn () (fromIntegral offs + 1) (fromIntegral line + 1) (fromIntegral col + 1)
+  where
+    pos  = L.Position (fromIntegral line) (fromIntegral col)
+    offs = (Rope.charLength . fst) $ Rope.charSplitAtPosition pos rope
 
 prettyPositionWithoutFile :: PositionWithoutFile -> String
 prettyPositionWithoutFile pos@(Pn () offset _line _col) =

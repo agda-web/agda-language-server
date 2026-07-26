@@ -41,11 +41,18 @@ import           Agda.Interaction.Options       ( CommandLineOptions
                                                 )
 import qualified Agda.Parser                   as Parser
 import           Agda.Position                  ( makeToOffset
-                                                , toAgdaPositionWithoutFile
+                                                , toAgdaPositionWithoutFileLC
                                                 )
 import           Agda.Syntax.Abstract.Pretty    ( prettyATop )
 import           Agda.Syntax.Parser             ( exprParser
                                                 , parse
+                                                )
+import           Agda.Syntax.Position           (getRange
+                                                , Range' (Range)
+                                                , getRangeWithoutFile
+                                                , Position' (..)
+                                                , iStart'
+                                                , iEnd'
                                                 )
 import           Agda.Syntax.Translation.ConcreteToAbstract
                                                 ( concreteToAbstract_ )
@@ -64,6 +71,12 @@ import           Agda.Syntax.Common.Pretty      ( render )
 import           Control.Concurrent.STM
 import           Control.Monad.Reader
 import           Control.Monad.State
+import           Control.Monad.Trans.Maybe      (hoistMaybe
+                                                , runMaybeT
+                                                , MaybeT (MaybeT)
+                                                )
+import           Data.Maybe                     ( fromMaybe )
+import           Data.Sequence                  ( Seq((:<|), Empty) )
 import           Data.Text                      ( Text
                                                 , pack
                                                 , unpack
@@ -72,6 +85,7 @@ import qualified Data.Text                     as Text
 import           Language.LSP.Server            ( LspM )
 import qualified Language.LSP.Server           as LSP
 import qualified Language.LSP.Protocol.Types   as LSP
+import qualified Language.LSP.Protocol.Lens    as VFS
 import qualified Language.LSP.VFS              as VFS
 import           Monad
 import           Options                        ( Config
@@ -117,28 +131,41 @@ inferTypeOfText filepath text = runCommandM $ do
 onHover :: LSP.Uri -> LSP.Position -> ServerM (LspM Config) (LSP.Hover LSP.|? LSP.Null)
 onHover uri pos = do
   result <- LSP.getVirtualFile (LSP.toNormalizedUri uri)
-  case result of
-    Nothing   -> return $ LSP.InR LSP.Null
-    Just file -> do
-      let source      = VFS.virtualFileText file
-      let offsetTable = makeToOffset source
-      let agdaPos     = toAgdaPositionWithoutFile offsetTable pos
-      lookupResult <- Parser.tokenAt uri source agdaPos
-      case lookupResult of
-        Nothing             -> return $ LSP.InR LSP.Null
-        Just (_token, text) -> do
-          case LSP.uriToFilePath uri of
-            Nothing       -> return $ LSP.InR LSP.Null
-            Just filepath -> do
-              let range = LSP.Range pos pos
-              inferResult <- inferTypeOfText filepath text
-              case inferResult of
-                Left err -> do
-                  let content = hoverContent $ "Error: " <> pack err
-                  return $ LSP.InL $ LSP.Hover content (Just range)
-                Right typeString -> do
-                  let content = hoverContent $ pack typeString
-                  return $ LSP.InL $ LSP.Hover content (Just range)
+  output <- runMaybeT $ do
+    file <- hoistMaybe result
+
+    let source      = VFS.virtualFileText file
+    VFS.CodePointPosition line col <- hoistMaybe $
+      VFS.positionToCodePointPosition file pos
+    let rope = VFS._file_text file
+    let agdaPos = toAgdaPositionWithoutFileLC rope line col
+    (token, text) <- MaybeT $ Parser.tokenAt uri source agdaPos
+
+    let Range () intvs = getRangeWithoutFile token
+
+    intv <- hoistMaybe $ case intvs of
+      x :<| _ -> Just x
+      _ -> Nothing
+
+    let
+      Pn () _ l0 c0 = iStart' intv
+      Pn () _ l1 c1 = iEnd' intv
+      range = LSP.Range
+        (LSP.Position (fromIntegral l0 - 1) (fromIntegral c0 - 1))
+        (LSP.Position (fromIntegral l1 - 1) (fromIntegral c1 - 1))
+
+    filepath <- hoistMaybe $ LSP.uriToFilePath uri
+    inferResult <- lift $ inferTypeOfText filepath text
+    case inferResult of
+      Left err -> do
+        let content = hoverContent $ "Error: " <> pack err
+        return $ LSP.InL $ LSP.Hover content (Just range)
+      Right typeString -> do
+        let content = hoverContent $ pack typeString
+        return $ LSP.InL $ LSP.Hover content (Just range)
+
+  return $ fromMaybe (LSP.InR LSP.Null) output
+
   where
       hoverContent =
         LSP.InL . LSP.mkMarkdownCodeBlock "agda-language-server"
