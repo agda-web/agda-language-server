@@ -150,9 +150,11 @@ onHover uri pos = do
     let
       Pn () _ l0 c0 = iStart' intv
       Pn () _ l1 c1 = iEnd' intv
-      range = LSP.Range
-        (LSP.Position (fromIntegral l0 - 1) (fromIntegral c0 - 1))
-        (LSP.Position (fromIntegral l1 - 1) (fromIntegral c1 - 1))
+      cprange = VFS.CodePointRange
+        (VFS.CodePointPosition (fromIntegral l0 - 1) (fromIntegral c0 - 1))
+        (VFS.CodePointPosition (fromIntegral l1 - 1) (fromIntegral c1 - 1))
+
+    range <- hoistMaybe $ VFS.codePointRangeToRange file cprange
 
     filepath <- hoistMaybe $ LSP.uriToFilePath uri
     inferResult <- lift $ inferTypeOfText filepath text
