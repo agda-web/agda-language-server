@@ -27,6 +27,10 @@ import Foreign.StablePtr (StablePtr, newStablePtr, freeStablePtr, deRefStablePtr
 
 #if MIN_VERSION_Agda(2,8,0)
 import Agda.Setup (setup)
+import Agda.Compiler.Backend (runTCM)
+import Agda (parseToplevelModuleName)
+import Agda.TypeChecking.Monad (runTCMTop)
+import Data.Functor (void)
 #endif
 
 main :: IO ()
@@ -96,6 +100,18 @@ foreign export javascript "send_message"
 foreign export javascript "recv_message"
   recvMessage :: ServerHandle -> IO JSString
 
+foreign export javascript "parse_module_name sync"
+  parseModuleName :: JSString -> JSString -> IO JSVal
+
+foreign import javascript unsafe "return new Error($1)"
+  js_new_error :: JSString -> IO JSVal
+
+foreign import javascript unsafe "return []"
+  js_new_array :: IO JSVal
+
+foreign import javascript unsafe "$1.push($2); return $1"
+  js_array_push :: JSVal -> JSVal -> IO JSVal
+
 runSetup :: IO ()
 runSetup = setup True
 
@@ -134,11 +150,36 @@ recvMessage hdl = do
 
 #else
 
-data JSString = JSString {}
+data JSVal = JSVal {}
+newtype JSString = JSString JSVal
 
 fromJSString :: JSString -> String
 fromJSString = undefined
 toJSString :: String -> JSString
 toJSString = undefined
 
+
+js_new_error :: JSString -> IO JSVal
+js_new_error = undefined
+js_new_array :: IO JSVal
+js_new_array = undefined
+js_array_push :: JSVal -> JSVal -> IO JSVal
+js_array_push = undefined
 #endif
+
+toJSVal :: JSString -> JSVal
+toJSVal (JSString val) = val
+
+parseModuleName :: JSString -> JSString -> IO JSVal
+parseModuleName ext src = do
+  let ext' = T.pack . fromJSString $ ext
+  let src' = T.pack . fromJSString $ src
+  result <- runTCMTop $ parseToplevelModuleName ext' src'
+  case result of
+    Left err -> do
+      js_new_error $ toJSString $ show err
+    Right ts -> do
+      arr <- js_new_array
+      let xs = map (toJSVal . toJSString . T.unpack) ts
+      sequence_ $ map (js_array_push arr) xs
+      return arr

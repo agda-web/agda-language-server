@@ -14,7 +14,7 @@ import           Agda.Interaction.Base          ( CommandQueue(..)
 #endif
                                                 , CommandState(optionsOnReload)
                                                 , Rewrite(AsIs)
-                                                , initCommandState
+                                                , initCommandState, CurrentFile (currentFilePath)
                                                 )
 import           Agda.Interaction.BasicOps      ( atTopLevel
                                                 , typeInCurrent
@@ -57,7 +57,7 @@ import           Agda.Syntax.Position           (getRange
 import           Agda.Syntax.Translation.ConcreteToAbstract
                                                 ( concreteToAbstract_ )
 import           Agda.TypeChecking.Monad        ( HasOptions(commandLineOptions)
-                                                , setInteractionOutputCallback
+                                                , setInteractionOutputCallback, putTC, lensPersistentState, TCState (stPersistentState), getTC, SessionTCState (..), askTC
                                                 )
 #if MIN_VERSION_Agda(2,8,0)
 import           Agda.Interaction.Command       ( CommandM, localStateCommandM )
@@ -67,7 +67,7 @@ import           Agda.TypeChecking.Monad.Trace  ( runPM )
 #else
 import           Agda.TypeChecking.Warnings     ( runPM )
 #endif
-import           Agda.Syntax.Common.Pretty      ( render )
+import           Agda.Syntax.Common.Pretty      ( render, prettyShow )
 import           Control.Concurrent.STM
 import           Control.Monad.Reader
 import           Control.Monad.State
@@ -92,6 +92,10 @@ import           Options                        ( Config
                                                 , Options(optRawAgdaOptions)
                                                 )
 
+import Agda.Syntax.Parser.Tokens (Token(..), Symbol (..))
+import Data.IORef (readIORef)
+import Agda.Utils.FileName (absolute)
+
 initialiseCommandQueue :: IO CommandQueue
 initialiseCommandQueue = CommandQueue <$> newTChanIO <*> newTVarIO Nothing
 
@@ -99,6 +103,12 @@ runCommandM :: CommandM a -> ServerM (LspM Config) (Either String a)
 runCommandM program = do
   env <- ask
   runAgda $ do
+    -- restore tc state from agda session
+    m <- liftIO $ readIORef $ envTCState env
+    _ <- case m of
+      Just tcSt -> putTC tcSt
+      Nothing -> return ()
+
     -- get command line options
     options <- getCommandLineOptions
 
@@ -115,18 +125,34 @@ runCommandM program = do
 
 inferTypeOfText
   :: FilePath -> Text -> ServerM (LspM Config) (Either String String)
-inferTypeOfText filepath text = runCommandM $ do
-    -- load first
-  cmd_load' filepath [] True Imp.TypeCheck $ \_ -> return ()
-  -- infer later
-  let norm = AsIs
-  -- localStateCommandM: restore TC state afterwards, do we need this here?
-  typ <- localStateCommandM $ do
-    (e, _attrs) <- lift $ runPM $ parse exprParser (unpack text)
-    lift $ atTopLevel $ do
-      concreteToAbstract_ e >>= typeInCurrent norm
+inferTypeOfText filepath text = do
+  env <- ask
+  curFile <- liftIO $ readIORef $ envCurrentFile env
+  fpath <- liftIO $ absolute filepath
 
-  render <$> prettyATop typ
+  -- bail out if the file is not loaded yet; loading from scratch might be very slow
+  -- the downside is that the hover is nearly unusable if the user frequently switch between files
+  case curFile of
+    Nothing -> return $ Left "File is not loaded yet."
+    Just f -> do
+      let afpath = currentFilePath f
+      if afpath /= fpath then
+        return $ Left "File is not active. Load it and try again."
+      else go
+
+  where
+    go = runCommandM $ do
+      -- load first
+      cmd_load' filepath [] True Imp.TypeCheck $ \_ -> return ()
+      -- infer later
+      let norm = AsIs
+      -- localStateCommandM: restore TC state afterwards, do we need this here?
+      typ <- localStateCommandM $ do
+        (e, _attrs) <- lift $ runPM $ parse exprParser (unpack text)
+        lift $ atTopLevel $ do
+          concreteToAbstract_ e >>= typeInCurrent norm
+
+      render <$> prettyATop typ
 
 onHover :: LSP.Uri -> LSP.Position -> ServerM (LspM Config) (LSP.Hover LSP.|? LSP.Null)
 onHover uri pos = do
@@ -140,6 +166,15 @@ onHover uri pos = do
     let rope = VFS._file_text file
     let agdaPos = toAgdaPositionWithoutFileLC rope line col
     (token, text) <- MaybeT $ Parser.tokenAt uri source agdaPos
+
+    -- filter out uninteresting tokens
+    _ <- hoistMaybe $ case token of
+        TokId _                     -> Just ()
+        TokQId _                    -> Just ()
+        TokLiteral _                -> Just ()
+        TokSymbol SymQuestionMark _ -> Just ()
+        TokString _                 -> Just ()
+        _                           -> Nothing
 
     let Range () intvs = getRangeWithoutFile token
 

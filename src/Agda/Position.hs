@@ -52,7 +52,7 @@ toAgdaRange table path (LSP.Range start end) =
         (toAgdaPositionWithoutFile table end)
     mkRangeFile path = RangeFile path Nothing
 
--- | LSP Position -> Agda PositionWithoutFile
+-- | LSP Position -> Agda PositionWithoutFile; deprecated
 toAgdaPositionWithoutFile :: ToOffset -> LSP.Position -> PositionWithoutFile
 toAgdaPositionWithoutFile table (LSP.Position line col) =
   Pn
@@ -61,6 +61,7 @@ toAgdaPositionWithoutFile table (LSP.Position line col) =
     (fromIntegral line + 1)
     (fromIntegral col + 1)
 
+-- | Text content -> line -> column -> Agda PositionWithoutFile
 toAgdaPositionWithoutFileLC :: Rope.Rope -> LSP.UInt -> LSP.UInt -> PositionWithoutFile
 toAgdaPositionWithoutFileLC rope line col =
   Pn () (fromIntegral offs + 1) (fromIntegral line + 1) (fromIntegral col + 1)

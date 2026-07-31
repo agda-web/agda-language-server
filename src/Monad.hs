@@ -4,8 +4,8 @@
 module Monad where
 
 import Agda.IR
-import Agda.Interaction.Base (IOTCM)
-import Agda.TypeChecking.Monad (TCMT)
+import Agda.Interaction.Base (IOTCM, CurrentFile)
+import Agda.TypeChecking.Monad (TCMT, TCState)
 import Control.Concurrent
 import Control.Monad.Reader
 import Data.IORef
@@ -44,7 +44,9 @@ data Env = Env
     envCommandController :: CommandController,
     envResponseChan :: Chan Response,
     envResponseController :: ResponseController,
-    envLspRequestChan :: Chan ReactorInput
+    envLspRequestChan :: Chan ReactorInput,
+    envTCState :: IORef (Maybe TCState),
+    envCurrentFile :: IORef (Maybe CurrentFile)
   }
 
 createInitEnv :: (MonadIO m, MonadLsp Config m) => Options -> m Env
@@ -56,6 +58,8 @@ createInitEnv options =
     <*> liftIO newChan
     <*> liftIO ResponseController.new
     <*> liftIO newChan
+    <*> liftIO (newIORef Nothing)
+    <*> liftIO (newIORef Nothing)
 
 --------------------------------------------------------------------------------
 

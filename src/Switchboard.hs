@@ -59,7 +59,7 @@ destroy switchboard = do
 keepPrintingLog :: Env -> IO ()
 keepPrintingLog env = forever $ do
   result <- readChan (envLogChan env)
-  when True $ do
+  when (envDevMode env) $ do
     Text.hPutStrLn stderr result
 
 -- | Keep handling requests from LSP

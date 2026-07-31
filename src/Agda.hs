@@ -10,6 +10,7 @@ module Agda
   , getCommandLineOptions
   , CommandReq(..)
   , CommandRes(..)
+  , parseToplevelModuleName
   ) where
 
 import           Prelude                        hiding ( null )
@@ -23,7 +24,7 @@ import           Agda.Interaction.Base          ( Command
 #else
                                                 , CommandM
 #endif
-                                                , CommandState(optionsOnReload)
+                                                , CommandState(optionsOnReload, theCurrentFile)
                                                 , IOTCM
                                                 , initCommandState
                                                 , parseIOTCM
@@ -56,12 +57,13 @@ import           Agda.TypeChecking.Monad        ( HasOptions
                                                 , TCErr
                                                 , commandLineOptions
                                                 , runTCMTop'
+                                                , getTC
                                                 )
 import           Agda.TypeChecking.Monad.Base   ( TCM )
 import qualified Agda.TypeChecking.Monad.Benchmark
                                                as Bench
 import           Agda.TypeChecking.Monad.State  ( setInteractionOutputCallback )
-import           Agda.Utils.FileName            ( absolute )
+import           Agda.Utils.FileName            ( absolute, AbsolutePath (AbsolutePath) )
 import           Agda.Utils.Impossible          ( CatchImpossible
                                                   ( catchImpossible
                                                   )
@@ -95,6 +97,27 @@ import           Options                        ( Config(configRawAgdaOptions)
 import qualified Agda.IR                       as IR
 import           Agda.Interaction.JSON          ( encode, encodeTCM )
 import           Agda.Interaction.JSONTop       ()
+
+import qualified Data.Text as T
+import Agda.Interaction.Imports (Source, moduleName)
+import Agda.Syntax.Position (mkRangeFile, beginningOfFile)
+import Agda.TypeChecking.Monad (setCurrentRange, TopLevelModuleName, runPMDropWarnings)
+import Agda.Syntax.Parser (parseFile, moduleParser)
+import Agda.Utils.List1 (toList)
+import Agda.Syntax.Common (moduleNameParts)
+import Data.IORef (atomicWriteIORef)
+import GHC.IO.StdHandles (stderr)
+
+parseToplevelModuleName :: T.Text -> T.Text -> TCM [T.Text]
+parseToplevelModuleName ext source = do
+  let f = AbsolutePath $ T.append "/dummy." ext
+  let rf0 = mkRangeFile f Nothing
+  setCurrentRange (beginningOfFile rf0) $ do
+    let txt = T.unpack source
+    -- mdOnlyAgdaBlocks <- optMdOnlyAgdaBlocks <$> commandLineOptions
+    parsedModName0 <- moduleName f . fst . fst =<< do
+        runPMDropWarnings $ parseFile moduleParser rf0 txt
+    return $ (toList . moduleNameParts) parsedModName0
 
 getAgdaVersion :: String
 getAgdaVersion = versionWithCommitInfo
@@ -141,6 +164,14 @@ start = do
     Bench.reset
     done <- Bench.billTo [] $ do
       r <- lift $ maybeAbort runInteraction
+
+      tcSt <- getTC
+      _ <- liftIO $ atomicWriteIORef (envTCState env) $ Just tcSt
+
+      cSt <- get
+      let curFile = theCurrentFile cSt
+      _ <- liftIO $ atomicWriteIORef (envCurrentFile env) curFile
+
       case r of
         Done    -> return True -- Done.
         Error s -> do
