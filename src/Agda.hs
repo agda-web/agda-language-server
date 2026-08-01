@@ -109,8 +109,8 @@ import Data.IORef (atomicWriteIORef)
 import GHC.IO.StdHandles (stderr)
 
 parseToplevelModuleName :: T.Text -> T.Text -> TCM [T.Text]
-parseToplevelModuleName ext source = do
-  let f = AbsolutePath $ T.append "/dummy." ext
+parseToplevelModuleName fallbackName source = do
+  let f = AbsolutePath fallbackName
   let rf0 = mkRangeFile f Nothing
   setCurrentRange (beginningOfFile rf0) $ do
     let txt = T.unpack source

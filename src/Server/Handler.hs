@@ -143,7 +143,7 @@ inferTypeOfText filepath text = do
   where
     go = runCommandM $ do
       -- load first
-      cmd_load' filepath [] True Imp.TypeCheck $ \_ -> return ()
+      -- cmd_load' filepath [] True Imp.TypeCheck $ \_ -> return ()
       -- infer later
       let norm = AsIs
       -- localStateCommandM: restore TC state afterwards, do we need this here?

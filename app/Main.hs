@@ -11,13 +11,13 @@ import System.Environment
 import System.FilePath ((</>))
 import System.IO
 import Text.Read (readMaybe)
+import qualified Data.Text as T
 
 #if defined(REACTOR)
 import GHC.Wasm.Prim
 import Server (runFromReactor)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
-import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import Data.Text.Encoding (encodeUtf8)
 import Data.Text.Lazy.Encoding (decodeUtf8)
@@ -171,10 +171,10 @@ toJSVal :: JSString -> JSVal
 toJSVal (JSString val) = val
 
 parseModuleName :: JSString -> JSString -> IO JSVal
-parseModuleName ext src = do
-  let ext' = T.pack . fromJSString $ ext
+parseModuleName fname src = do
+  let fname' = T.pack . fromJSString $ fname
   let src' = T.pack . fromJSString $ src
-  result <- runTCMTop $ parseToplevelModuleName ext' src'
+  result <- runTCMTop $ parseToplevelModuleName fname' src'
   case result of
     Left err -> do
       js_new_error $ toJSString $ show err
