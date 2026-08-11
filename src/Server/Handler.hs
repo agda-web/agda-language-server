@@ -47,17 +47,22 @@ import           Agda.Syntax.Abstract.Pretty    ( prettyATop )
 import           Agda.Syntax.Parser             ( exprParser
                                                 , parse
                                                 )
-import           Agda.Syntax.Position           (getRange
-                                                , Range' (Range)
+import           Agda.Syntax.Position           ( Range' (Range)
+#if MIN_VERSION_Agda(2,8,0)
                                                 , getRangeWithoutFile
-                                                , Position' (..)
                                                 , iStart'
                                                 , iEnd'
+#else
+                                                , getRange
+                                                , iStart
+                                                , iEnd
+#endif
+                                                , Position' (..)
                                                 )
 import           Agda.Syntax.Translation.ConcreteToAbstract
                                                 ( concreteToAbstract_ )
 import           Agda.TypeChecking.Monad        ( HasOptions(commandLineOptions)
-                                                , setInteractionOutputCallback, putTC, lensPersistentState, TCState (stPersistentState), getTC, SessionTCState (..), askTC
+                                                , setInteractionOutputCallback, putTC, lensPersistentState, TCState (stPersistentState), getTC, askTC
                                                 )
 #if MIN_VERSION_Agda(2,8,0)
 import           Agda.Interaction.Command       ( CommandM, localStateCommandM )
@@ -176,15 +181,24 @@ onHover uri pos = do
         TokString _                 -> Just ()
         _                           -> Nothing
 
+#if MIN_VERSION_Agda(2,8,0)
     let Range () intvs = getRangeWithoutFile token
+#else
+    let Range _ intvs = getRange token
+#endif
 
     intv <- hoistMaybe $ case intvs of
       x :<| _ -> Just x
       _ -> Nothing
 
     let
+#if MIN_VERSION_Agda(2,8,0)
       Pn () _ l0 c0 = iStart' intv
       Pn () _ l1 c1 = iEnd' intv
+#else
+      Pn () _ l0 c0 = iStart intv
+      Pn () _ l1 c1 = iEnd intv
+#endif
       cprange = VFS.CodePointRange
         (VFS.CodePointPosition (fromIntegral l0 - 1) (fromIntegral c0 - 1))
         (VFS.CodePointPosition (fromIntegral l1 - 1) (fromIntegral c1 - 1))

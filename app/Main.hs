@@ -27,11 +27,11 @@ import Foreign.StablePtr (StablePtr, newStablePtr, freeStablePtr, deRefStablePtr
 
 #if MIN_VERSION_Agda(2,8,0)
 import Agda.Setup (setup)
-import Agda.Compiler.Backend (runTCM)
-import Agda (parseToplevelModuleName)
-import Agda.TypeChecking.Monad (runTCMTop)
 import Data.Functor (void)
 #endif
+
+import Agda (parseToplevelModuleName)
+import Agda.TypeChecking.Monad (runTCMTop)
 
 main :: IO ()
 main = do
@@ -112,8 +112,13 @@ foreign import javascript unsafe "return []"
 foreign import javascript unsafe "$1.push($2); return $1"
   js_array_push :: JSVal -> JSVal -> IO JSVal
 
+#if MIN_VERSION_Agda(2,8,0)
 runSetup :: IO ()
 runSetup = setup True
+#else
+runSetup :: IO ()
+runSetup = error "This Agda version does not have setup functionality."
+#endif
 
 newLanguageServer :: IO ServerHandle
 newLanguageServer = initialEnv >>= newStablePtr

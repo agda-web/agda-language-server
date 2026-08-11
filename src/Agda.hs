@@ -99,20 +99,32 @@ import           Agda.Interaction.JSON          ( encode, encodeTCM )
 import           Agda.Interaction.JSONTop       ()
 
 import qualified Data.Text as T
-import Agda.Interaction.Imports (Source, moduleName)
-import Agda.Syntax.Position (mkRangeFile, beginningOfFile)
-import Agda.TypeChecking.Monad (setCurrentRange, TopLevelModuleName, runPMDropWarnings)
-import Agda.Syntax.Parser (parseFile, moduleParser)
-import Agda.Utils.List1 (toList)
+
+import Agda.Interaction.Imports (Source)
 import Agda.Syntax.Common (moduleNameParts)
+import Agda.Syntax.Parser (parseFile, moduleParser)
+import Agda.Syntax.Position (mkRangeFile, beginningOfFile)
+import Agda.TypeChecking.Monad (setCurrentRange)
+import Agda.Utils.List1 (toList)
 import Data.IORef (atomicWriteIORef)
-import GHC.IO.StdHandles (stderr)
+#if MIN_VERSION_Agda(2,8,0)
+import Agda.Interaction.Imports (moduleName)
+import Agda.TypeChecking.Monad (TopLevelModuleName, runPMDropWarnings)
+#else
+import Agda.Interaction.FindFile (moduleName)
+import Agda.Syntax.TopLevelModuleName (TopLevelModuleName)
+import Agda.TypeChecking.Warnings (runPMDropWarnings)
+#endif
 
 parseToplevelModuleName :: T.Text -> T.Text -> TCM [T.Text]
 parseToplevelModuleName fallbackName source = do
   let f = AbsolutePath fallbackName
   let rf0 = mkRangeFile f Nothing
+#if MIN_VERSION_Agda(2,8,0)
   setCurrentRange (beginningOfFile rf0) $ do
+#else
+  do
+#endif
     let txt = T.unpack source
     -- mdOnlyAgdaBlocks <- optMdOnlyAgdaBlocks <$> commandLineOptions
     parsedModName0 <- moduleName f . fst . fst =<< do
