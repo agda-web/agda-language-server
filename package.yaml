@@ -129,6 +129,8 @@ executables:
     - condition: "arch(wasm32)"
       ghc-options: -with-rtsopts=-V1
     - condition: "flag(reactor)"
+      other-modules:
+      - Reactor
       dependencies:
       - ghc-experimental
       ghc-options:

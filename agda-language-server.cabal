@@ -184,6 +184,8 @@ executable als
   if arch(wasm32)
     ghc-options: -with-rtsopts=-V1
   if flag(reactor)
+    other-modules:
+        Reactor
     ghc-options: -no-hs-main -optl-mexec-model=reactor -optl-Wl,--export=hs_init,--export=run_setup,--export=new_language_server,--export=free_language_server,--export=run_language_server,--export=send_message,--export=recv_message
     build-depends:
         ghc-experimental
