@@ -8,7 +8,7 @@ defaults:
 
 on:
   push:
-    branches: [master]
+    branches: [master, ci]
     tags:
       - 'v*' # Push events to matching v*, i.e. v1.0, v20.15.10
   pull_request:
@@ -174,6 +174,9 @@ jobs:
       if: runner.os == 'Windows'
       run: |
         stack exec $STACK_YAML_ARG -- pacman -S --noconfirm mingw-w64-x86_64-icu mingw-w64-x86_64-pkgconf
+        echo "--- Now testing if pkg-config is installed correctly ---"
+        pkg-config --version
+        pkg-config --libs icu-uc
 
     - name: 📸 Build Snapshot
       run: stack build $STACK_YAML_ARG --no-terminal --only-snapshot -j1
