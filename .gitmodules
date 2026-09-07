@@ -4,4 +4,4 @@
 	branch = agda-web/release-v2.8.0
 [submodule "wasm-submodules/lsp"]
 	path = wasm-submodules/lsp
-	url = git@github.com:andy0130tw/lsp.git
+	url = https://github.com/haskell/lsp

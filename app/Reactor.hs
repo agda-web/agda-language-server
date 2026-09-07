@@ -3,23 +3,29 @@ module Reactor where
 
 import GHC.Wasm.Prim
 import Options
-import Server (runFromReactor)
+import Server (serverDefn)
 import qualified Data.Text as T
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Text.Lazy as TL
+import Language.LSP.Server hiding (Options)
 import Data.Text.Encoding (encodeUtf8)
 import Data.Text.Lazy.Encoding (decodeUtf8)
 import Control.Concurrent (MVar, newEmptyMVar, takeMVar, putMVar)
 import Foreign.StablePtr (StablePtr, newStablePtr, freeStablePtr, deRefStablePtr)
+import qualified Data.Attoparsec.ByteString as Attoparsec
+
+#if MIN_VERSION_Agda(2,8,0)
+import Agda.Setup (setup)
+#endif
 
 import Agda (parseToplevelModuleName)
 import Agda.TypeChecking.Monad (runTCMTop)
 
 data ReactorEnv = ReactorEnv
-  { options :: Options
-  , incomingMessage :: MVar B.StrictByteString
-  , outgoingMessage :: MVar String
+  { rOptions :: Options
+  , rIncomingMessage :: MVar B.StrictByteString
+  , rOutgoingMessage :: MVar String
   }
 
 initialEnv :: IO ReactorEnv
@@ -76,24 +82,44 @@ runLanguageServer hdl = do
 
   let
     serverInwards :: IO B.StrictByteString
-    serverInwards = takeMVar (incomingMessage env)
+    serverInwards = takeMVar (rIncomingMessage env)
 
     serverOutwards :: BL.LazyByteString -> IO ()
-    serverOutwards s = (return . TL.unpack . decodeUtf8) s >>= putMVar (outgoingMessage env)
+    serverOutwards s = (return . TL.unpack . decodeUtf8) s >>= putMVar (rOutgoingMessage env)
 
-  runFromReactor serverInwards serverOutwards (options env)
+  runFromReactor serverInwards serverOutwards (rOptions env)
+
+runFromReactor :: IO B.StrictByteString -> (BL.LazyByteString -> IO ()) -> Options -> IO Int
+runFromReactor serverInwards serverOutwards options = do
+  runServerWithConfig serverConfig (serverDefn options)
+  where
+    serverConfig :: ServerConfig Config
+    serverConfig = ServerConfig
+      { ioLogger = mempty
+      , lspLogger = mempty
+      , inwards = serverInwards
+      , outwards = serverOutwards
+      , prepareOutwards = id
+      , parseInwards = do
+          -- using takeByteString here will make it return partial result,
+          -- requiring another empty string to signal its end
+          chunk <- Attoparsec.getChunk
+          case chunk of
+            Nothing -> pure B.empty
+            Just xs -> Attoparsec.take $ B.length xs
+      }
 
 sendMessage :: ServerHandle -> JSString -> IO ()
 sendMessage hdl s = do
   env <- deRefStablePtr hdl
   let input = fromJSString s
-  putMVar (incomingMessage env) $ (encodeUtf8 . T.pack) input
+  putMVar (rIncomingMessage env) $ (encodeUtf8 . T.pack) input
   return ()
 
 recvMessage :: ServerHandle -> IO JSString
 recvMessage hdl = do
   env <- deRefStablePtr hdl
-  str <- takeMVar (outgoingMessage env)
+  str <- takeMVar (rOutgoingMessage env)
   return $ toJSString str
 
 toJSVal :: JSString -> JSVal
