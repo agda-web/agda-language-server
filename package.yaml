@@ -37,6 +37,10 @@ flags:
     description: Embed Agda-2.8.0
     manual: true
     default: false
+  Agda-2-9-0:
+    description: Embed Agda-2.9.0
+    manual: true
+    default: true
   reactor:
     description: Build as a WASI reactor module
     manual: true
@@ -51,6 +55,9 @@ when:
 - condition: "flag(Agda-2-8-0)"
   dependencies:
     - Agda == 2.8.0
+- condition: "flag(Agda-2-9-0)"
+  dependencies:
+    - Agda == 2.9.0
 - condition: "arch(wasm32)"
   then:
     dependencies:
